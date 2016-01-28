@@ -71,7 +71,58 @@ def img2numpy(fname):
         img = img.reshape(dim1, dim2)
     return img
 
+def load_stack(pathImgs, xdeg, ydeg, zdeg, nameStr):
+    imgs, nImgs = parse_dir_for_images(pathImgs)
+    img = img2numpy(os.path.join(pathImgs, imgs[0]))
+    nRow, nCol = img.shape
+    vol = nRow * nCol * nImgs
+
+    # Print view properties
+    print nameStr
+    print "========="
+    print "{0} angles (X,Y,Z): {1}, {2}, {3}".format(nameStr, xdeg, ydeg, zdeg)
+    print "{0} path: {1}".format(nameStr, pathImgs)
+    print "{0} stack dimensions: {1} x {2} x {3}".format(nameStr, nCol, nRow,
+        nImgs)
+    print "{0} volume: {1} voxels".format(nameStr, vol)
+
+    # Check that the volume of the view stack matches that of the reference
+    # stack.
+    if vol != volRef:
+        usage("Volume of view stack does not match that of the reference.")
+
+    # Initialize empty numpy array to load view images into
+    print "Initializing NumPy array..."
+    stack = np.zeros([nImgs, nRow, nCol], dtype = 'uint8')
+    for i in range(nImgs):
+        fname = os.path.join(pathImgs, imgs[i])
+        imgi = img2numpy(fname)
+        nRowi, nColi = imgi.shape
+        if (nRowi == nRow) and (nColi == nCol):
+            stack[i,:,:] = imgi
+            lastGoodSlice = i
+            print "Reading {0}, Image {1}: {2}".format(nameStr, i+1, fname)
+        else:
+            stack[i,:,:] = stack[lastGoodSlice,:,:]
+            print "WARNING: Improper dimensions for {0}, Image {1}: {2}".format(nameStr,
+                i+1, fname)
+            print "WARNING: Replacing with Image {0}".format(lastGoodSlice + 1)
+    return stack
+
+def rotate_stack(stack, xdeg, ydeg, zdeg):
+    axes = []
+    if xdeg == 90 and ydeg == 0 and zdeg == 0:
+        axes = [0, 1]
+    elif xdeg == 0 and ydeg == 90 and zdeg == 0:
+        axes = [0, 2]
+    if axes:
+        print "Rotating NumPy array..."
+        stack = ndimage.interpolation.rotate(stack, -90, axes)
+    return stack
+
 if __name__ == '__main__':
+    global volRef
+
     opts, dirRef = parse_args()
     imgsRef, nImgsRef = parse_dir_for_images(dirRef)  
 
@@ -100,57 +151,22 @@ if __name__ == '__main__':
     if not nx == ny == nz == nViews:
         usage("Mismatching numbers of angles and paths.")    
 
-    # Print run info at the beginning
+    # Load all view stacks as Numpy arrays, and append them to a list
+    stackList = []
     for N in range(nViews):
-        imgsView, nImgsView = parse_dir_for_images(views[N])
-        imgView = img2numpy(os.path.join(views[N], imgsView[0]))
-        nRowView, nColView = imgView.shape
-        volView = nRowView * nColView * nImgsView
-         
-        # Print view properties
-        print "View {0}".format(N+1)
-        print "======"
-        print "View {0} angles (X,Y,Z): {1}, {2}, {3}".format(N+1, xdeg[N],
-            ydeg[N], zdeg[N])
-        print "View {0} path: {1}".format(N+1, views[N])
-        print "View {0} stack dimensions: {1} x {2} x {3}".format(N+1, nColView,
-            nRowView, nImgsView)
-        print "View {0} volume: {1} voxels".format(N+1, volView)
+        stackList.append(load_stack(views[N], xdeg[N], ydeg[N], zdeg[N], 'View {0}'.format(N+1)))
+        stackList[-1] = rotate_stack(stackList[-1], xdeg[N], ydeg[N], zdeg[N])
 
-        # Check that the volume of the view stack matches that of the reference
-        # stack.
-        if volView != volRef:
-            usage("Volume of view stack does not match that of the reference.")
-  
-        # Initialize empty numpy array to load view images into
-        print "Initializing NumPy array..."
-        stackView = np.zeros([nImgsView, nRowView, nColView], dtype = 'uint8')
-        for i in range(nImgsView):
-            fname = os.path.join(views[N], imgsView[i])
-            imgi = img2numpy(fname)
-            nRowi, nColi = imgi.shape
-            if (nRowi == nRowView) and (nColi == nColView):
-                stackView[i,:,:] = imgi
-                lastGoodSlice = i
-                print "Reading View {0}, Image {1}: {2}".format(N+1, i+1, fname)
-            else:
-                stackView[i,:,:] = stackView[lastGoodSlice,:,:]
-                print "WARNING: Improper dimensions for View {0}, Image {1}: {2}".format(N+1,
-                    i+1, fname)
-                print "WARNING: Replacing with Image {0}".format(lastGoodSlice + 1)
+    # Append reference stack to the list
+    stackList.append(load_stack(dirRef, 0, 0, 0, 'Reference'))
 
-        axes = [] 
-        if xdeg[N] == 90 and ydeg[N] == 0:
-            axes = [0, 1]
-        elif xdeg[N] == 0 and ydeg[N] == 90:
-            axes = [0, 2]
+    # Take the mean of all views
+    print "Calculating the mean of all view..."
+    stackList[0] = sum(stackList) / len(stackList)
 
-        if axes:
-            print "Rotating NumPy array..."
-            stackView = ndimage.interpolation.rotate(stackView, -90, axes)
-
-        for i in range(100):
-            misc.imsave(str(i).zfill(3) + '.png', stackView[i,:,:])
- 
-        print ""
- 
+    # Save the output images to disk
+    for i in range(nImgsRef):
+        fnameout = str(i).zfill(5) + '.tif'
+        "Writing image {0}".format(fnameout)
+        misc.imsave(fnameout, stackList[0][i,:,:])
+     
