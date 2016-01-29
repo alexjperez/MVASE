@@ -30,6 +30,9 @@ def parse_args():
                  help = "Comma-separated list of Z rotation angles "
                         "corresponding to the entries given to the --dirs "
                         "flag.")
+    p.add_option("--write_intermediates", action = "store_true", dest = "write_inter",
+                 help = "Enables the writing of rotated intermediate image "
+                         "stacks.")
     (opts, args) = p.parse_args()
     dirRef = check_args(args)
     return opts, dirRef
@@ -120,6 +123,13 @@ def rotate_stack(stack, xdeg, ydeg, zdeg):
         stack = ndimage.interpolation.rotate(stack, -90, axes)
     return stack
 
+def write_stack(arrList, N, dirOut):
+    os.makedirs(dirOut)
+    for i in range(arrList[N].shape[0]):
+        fnameout = os.path.join(dirOut, str(i).zfill(5) + '.tif')
+        print "Writing image {0}".format(fnameout)
+        misc.imsave(fnameout, arrList[N][i,:,:])
+
 if __name__ == '__main__':
     global volRef
 
@@ -156,17 +166,15 @@ if __name__ == '__main__':
     for N in range(nViews):
         stackList.append(load_stack(views[N], xdeg[N], ydeg[N], zdeg[N], 'View {0}'.format(N+1)))
         stackList[-1] = rotate_stack(stackList[-1], xdeg[N], ydeg[N], zdeg[N])
+        if opts.write_inter:
+            write_stack(stackList, N, 'view_' + str(N+1).zfill(2))
 
     # Append reference stack to the list
     stackList.append(load_stack(dirRef, 0, 0, 0, 'Reference'))
 
     # Take the mean of all views
     print "Calculating the mean of all view..."
-    stackList[0] = sum(stackList) / len(stackList)
+    stackList[-1] = sum(stackList) / len(stackList)
 
-    # Save the output images to disk
-    for i in range(nImgsRef):
-        fnameout = str(i).zfill(5) + '.tif'
-        "Writing image {0}".format(fnameout)
-        misc.imsave(fnameout, stackList[0][i,:,:])
-     
+    # Save the averaged image stack to disk
+    write_stack(stackList, nViews, 'average')
