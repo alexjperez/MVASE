@@ -4,6 +4,8 @@
 Runs MVASE (Multiple View Automatic Segmentation Enhancement).
 '''
 
+from __future__ import division
+
 import os
 import sys
 import glob
@@ -103,7 +105,7 @@ def load_stack(pathImgs, xdeg, ydeg, zdeg, nameStr):
 
     # Initialize empty numpy array to load view images into
     print "Initializing NumPy array..."
-    stack = np.zeros([nImgs, nRow, nCol], dtype = 'uint16')
+    stack = np.zeros([nImgs, nRow, nCol], dtype = 'float')
     for i in range(nImgs):
         fname = os.path.join(pathImgs, imgs[i])
         imgi = img2numpy(fname)
