@@ -7,10 +7,12 @@ Runs MVASE (Multiple View Automatic Segmentation Enhancement).
 import os
 import sys
 import glob
+import operator
 import numpy as np
 from PIL import Image
 from scipy import ndimage, misc
 from optparse import OptionParser
+from functools import reduce
 
 def parse_args():
     global p
@@ -27,9 +29,14 @@ def parse_args():
                         "corresponding to the entries given to the --dirs " 
                         "flag.")
     p.add_option("--z", dest = "zangles", metavar = "ANGLES",
-                 help = "Comma-separated list of Z rotation angles "
-                        "corresponding to the entries given to the --dirs "
+                 help = "Comma-separated list of Z rotation angles " "corresponding to the entries given to the --dirs "
                         "flag.")
+    p.add_option("--mode", dest = "mode", metavar = "MODE",
+                 help = "Mode for combining probabilities from all views. "
+                        "    mean  = Arithmetic mean "
+                        "    gmean = Geometric mean "
+                        "    max   = Maximum probability")
+
     p.add_option("--write_intermediates", action = "store_true", dest = "write_inter",
                  help = "Enables the writing of rotated intermediate image "
                          "stacks.")
@@ -96,7 +103,7 @@ def load_stack(pathImgs, xdeg, ydeg, zdeg, nameStr):
 
     # Initialize empty numpy array to load view images into
     print "Initializing NumPy array..."
-    stack = np.zeros([nImgs, nRow, nCol], dtype = 'uint8')
+    stack = np.zeros([nImgs, nRow, nCol], dtype = 'uint16')
     for i in range(nImgs):
         fname = os.path.join(pathImgs, imgs[i])
         imgi = img2numpy(fname)
@@ -128,7 +135,7 @@ def write_stack(arrList, N, dirOut):
     for i in range(arrList[N].shape[0]):
         fnameout = os.path.join(dirOut, str(i).zfill(5) + '.tif')
         print "Writing image {0}".format(fnameout)
-        misc.imsave(fnameout, arrList[N][i,:,:])
+        misc.imsave(fnameout, arrList[N][i,:,:].astype('uint8'))
 
 if __name__ == '__main__':
     global volRef
@@ -140,7 +147,15 @@ if __name__ == '__main__':
     nRowRef, nColRef = imgRef.shape
     volRef = nRowRef * nColRef * nImgsRef
 
-    print "Reference: 0,0,0 deg, Path: {0}".format(dirRef)
+    if not opts.mode:
+        opts.mode = 'mean'
+
+    print "Multiple View Automatic Segmentation Enhancement (MVASE)"
+    print "========================================================"
+    print ""
+    print "Mode: {0}".format(opts.mode)
+    print ""
+    print "Reference path: {0}".format(dirRef)
     print "Reference stack dimensions: {0} x {1} x {2}".format(nColRef, nRowRef,
         nImgsRef)
     print "Reference stack volume: {0} voxels".format(volRef)
@@ -172,9 +187,15 @@ if __name__ == '__main__':
     # Append reference stack to the list
     stackList.append(load_stack(dirRef, 0, 0, 0, 'Reference'))
 
-    # Take the mean of all views
-    print "Calculating the mean of all view..."
-    stackList[-1] = sum(stackList) / len(stackList)
+    if opts.mode == 'mean':
+        print "Calculating the arithmetic mean of all views."
+        stackList[-1] = sum(stackList) / len(stackList)
+    elif opts.mode == 'gmean':
+        print "Calculating the geometric mean of all views."
+        stackList[-1] = reduce(operator.mul, stackList, 1) ** (1/len(stackList))
+    else:
+        print "Calculating the arithmetic mean of all views."
+        stackList[-1] = sum(stackList) / len(stackList)
 
     # Save the averaged image stack to disk
-    write_stack(stackList, nViews, 'average')
+    write_stack(stackList, nViews, 'gmean')
