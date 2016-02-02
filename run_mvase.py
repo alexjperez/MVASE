@@ -193,6 +193,9 @@ if __name__ == '__main__':
     elif opts.mode == 'gmean':
         print "Calculating the geometric mean of all views."
         stackList[-1] = reduce(operator.mul, stackList, 1) ** (1/len(stackList))
+    elif opts.mode == 'max':
+        print "Calculating the max of all views."
+        stackList[-1] = np.amax(stackList, axis = 0)
     else:
         print "Calculating the arithmetic mean of all views."
         stackList[-1] = sum(stackList) / len(stackList)
